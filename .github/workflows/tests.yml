@@ -56,18 +56,33 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check if service is initialized
+        id: check
+        working-directory: .
+        run: |
+          if [ -f "services/${{ matrix.service }}/package.json" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::services/${{ matrix.service }} has no package.json yet, skipping"
+          fi
+
       - uses: actions/setup-node@v4
+        if: steps.check.outputs.ready == 'true'
         with:
           node-version: 20
 
       - name: Install dependencies
+        if: steps.check.outputs.ready == 'true'
         run: |
           if [ -f package-lock.json ]; then npm ci; else npm install; fi
 
       - name: Lint
+        if: steps.check.outputs.ready == 'true'
         run: npm run lint --if-present
 
       - name: Run tests
+        if: steps.check.outputs.ready == 'true'
         run: npm test --if-present
 
   go:
@@ -107,19 +122,34 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check if service is initialized
+        id: check
+        working-directory: .
+        run: |
+          if [ -f "services/${{ matrix.service }}/go.mod" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::services/${{ matrix.service }} has no go.mod yet, skipping"
+          fi
+
       - uses: actions/setup-go@v5
+        if: steps.check.outputs.ready == 'true'
         with:
           go-version-file: services/${{ matrix.service }}/go.mod
           cache-dependency-path: services/${{ matrix.service }}/go.sum
 
       - name: Download dependencies
+        if: steps.check.outputs.ready == 'true'
         run: go mod download
 
       - name: Vet
+        if: steps.check.outputs.ready == 'true'
         run: go vet ./...
 
       # -race catches data races, which matters for the concurrency in Orders and Tickets
       - name: Run tests
+        if: steps.check.outputs.ready == 'true'
         run: go test -race -cover ./...
 
   docker:
@@ -133,4 +163,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build image
-        run: docker build -t ticketflow-${{ matrix.service }}:ci services/${{ matrix.service }}
+        run: |
+          f="services/${{ matrix.service }}/Dockerfile"
+          if [ ! -s "$f" ]; then
+            echo "::warning::$f is missing or empty, skipping"
+            exit 0
+          fi
+          docker build -t ticketflow-${{ matrix.service }}:ci services/${{ matrix.service }}

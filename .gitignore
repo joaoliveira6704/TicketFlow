@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+
+# Bun (local only; CI uses package-lock.json)
+bun.lock
+bun.lockb
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Go build output
+services/orders/bin/
+services/tickets/bin/
+*.exe
+*.test
+*.out
+coverage.out
+
+# Test coverage
+coverage/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+
+# Docker local data
+data/
+volumes/
+
+# Local AI agent settings (personal, not shared)
+.claude/settings.local.json
