@@ -1,0 +1,136 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  node:
+    name: Node.js · ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [users, events, payments, notifications]
+    defaults:
+      run:
+        working-directory: services/${{ matrix.service }}
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      mongo:
+        image: mongo:7
+        ports: ["27017:27017"]
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.runCommand({ ping: 1 })'"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      rabbitmq:
+        image: rabbitmq:3-management
+        ports: ["5672:5672"]
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q ping"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgres://test:test@localhost:5432/test
+      MONGO_URL: mongodb://localhost:27017/test
+      RABBITMQ_URL: amqp://guest:guest@localhost:5672
+      JWT_SECRET: test-secret
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: |
+          if [ -f package-lock.json ]; then npm ci; else npm install; fi
+
+      - name: Lint
+        run: npm run lint --if-present
+
+      - name: Run tests
+        run: npm test --if-present
+
+  go:
+    name: Go · ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [orders, tickets]
+    defaults:
+      run:
+        working-directory: services/${{ matrix.service }}
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      rabbitmq:
+        image: rabbitmq:3-management
+        ports: ["5672:5672"]
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q ping"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+
+    env:
+      DATABASE_URL: postgres://test:test@localhost:5432/test?sslmode=disable
+      RABBITMQ_URL: amqp://guest:guest@localhost:5672
+      JWT_SECRET: test-secret
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: services/${{ matrix.service }}/go.mod
+          cache-dependency-path: services/${{ matrix.service }}/go.sum
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Vet
+        run: go vet ./...
+
+      # -race catches data races, which matters for the concurrency in Orders and Tickets
+      - name: Run tests
+        run: go test -race -cover ./...
+
+  docker:
+    name: Docker build · ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    needs: [node, go]
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [users, events, payments, notifications, orders, tickets]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t ticketflow-${{ matrix.service }}:ci services/${{ matrix.service }}
