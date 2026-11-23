@@ -40,7 +40,7 @@ All requests go through the Traefik gateway, which validates the JWT. Each servi
 - Docker 24+ with Docker Compose v2
 - Git
 - Postman (to run the API collection)
-- Optional, only to run tests outside Docker: Node.js 20+ and Go 1.22+
+- Optional, only to run tests outside Docker: Node.js 20+ and Go 1.27+
 
 ## Quick start (local, Docker Compose)
 
@@ -78,6 +78,23 @@ docker stack services ticketflow
 > On a multi-node Swarm, push the images to a registry (e.g. Docker Hub) and update the image names in `docker-stack.yml`, so every node can pull them.
 
 To remove the stack: `docker stack rm ticketflow`.
+
+## Build and run a single service
+
+Every service has its own `Dockerfile` in `services/<service>/`. To build and run one on its own, for example `orders`:
+
+```bash
+# build the image (run from the repository root)
+docker build -t ticketflow/orders:latest services/orders
+
+# run it, publishing the container port 8080 on localhost:8081
+docker run --rm -p 8081:8080 --env-file services/orders/.env ticketflow/orders:latest
+
+# check it
+curl http://localhost:8081/api/health
+```
+
+The orders image is a multi-stage build: it compiles a static Go binary with `golang:1.27-alpine` and runs it on an empty `scratch` image as a non-root user, with `GIN_MODE=release`.
 
 ## URLs
 
